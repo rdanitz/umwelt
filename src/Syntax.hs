@@ -22,6 +22,7 @@ data Type
   | NatType
   | IntType
   | StrType
+  | EnumType [Value]
   deriving (Eq, Show)
 
 data Value
@@ -29,4 +30,5 @@ data Value
   | NatVal  Integer
   | IntVal  Integer
   | StrVal  String
+  | EnumVal String
   deriving (Eq, Show)

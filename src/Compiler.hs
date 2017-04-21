@@ -38,6 +38,10 @@ class TypeCheck a where
   typeChecks :: a -> Either String a
 
 instance TypeCheck (String, Type) where
+  typeChecks x@(s, t@(EnumType vs)) =
+    if s `elem` [s | EnumVal s <- vs]
+    then Right x
+    else Left $ "expected: " ++ show t ++ ", but got value: " ++ s
   typeChecks x@(s, t) =
     let p = parserFor t
     in  fmap (const x) $ maybe (Left $ "expected: " ++ show t ++ ", but got value: " ++ s)
@@ -48,9 +52,13 @@ instance TypeCheck (Value, Type) where
   typeChecks x@(NatVal n,  NatType)
     | n >= 0    = Right x
     | otherwise = Left $ "not a natural number: " ++ show n
-  typeChecks x@(IntVal _,  IntType)  = Right x
-  typeChecks x@(StrVal _,  StrType)  = Right x
-  typeChecks (v, t)  =
+  typeChecks x@(IntVal _,  IntType)     = Right x
+  typeChecks x@(StrVal _,  StrType)     = Right x
+  typeChecks x@(e@(EnumVal v), t@(EnumType vs)) =
+    if e `elem` vs
+    then Right x
+    else Left $ "expected: " ++ show t ++ ", but got value: " ++ show e
+  typeChecks (v, t) =
     Left $ "expected: " ++ show t ++ ", but got value: " ++ show v
 
 instance TypeCheck Stmt where
