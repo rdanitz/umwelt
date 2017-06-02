@@ -1,5 +1,6 @@
 module Parser where
 
+import Prelude hiding (LT, EQ, GT, Ordering)
 import Data.Char
 import Control.Applicative ((<|>))
 import Data.Maybe
@@ -9,14 +10,27 @@ import Syntax
 
 --------------------------------------------------------------------------------
 
+type Pass = [String] -> [String]
+
 parse :: String -> Umwelt
-parse s = case listToMaybe $ readP_to_S umwelt s of
+parse s =
+  let s' = unlines . pass1 . pass0 . lines $ s
+  in  case listToMaybe $ filter (null . snd) $ readP_to_S umwelt s' of
   Just (u, _) -> u
   Nothing     -> error "could not parse"
 
--- utiity
+pass0 :: Pass
+pass0 = map (takeWhile (/= '#'))
 
-any' = const True
+pass1 :: Pass
+pass1 = filter (not . all isSpace)
+
+-- utility
+
+any'   = const True
+spaces = skipMany $ satisfy isSpace
+eol    = const () <$> char '\n'
+parens  = between (char '(') (char ')')
 
 parserFor :: Type -> ReadP Value
 parserFor BoolType      = boolVal
@@ -28,52 +42,56 @@ parserFor (EnumType vs) = enumVal
 -- top level
 
 umwelt
-  =   Umwelt . fromJust . sequence . filter isJust
-  <$> many1 (choice [stmt, comment'])
-  <*  eof
+    = Umwelt . fromJust . sequence . filter isJust
+  <$> many (choice [stmt, comment'])
 
 stmt
-  =   Just
+    = Just
   <$> choice [expect, optional']
-  <*  skipSpaces
+  <*  spaces
+  <*  choice [eol, eof]
 
 comment
-  =  Nothing
+   = Nothing
   <$ char '#'
   <* skipMany1 (satisfy any')
 
 comment'
-  =   id
+    = id
   <$> comment
 
 expect
-  =   Expect
+    = Expect
   <$  char '!'
   <*  skipSpaces
-  <*> var
+  <*> identifier
   <*  skipSpaces
-  <*> (typeDecl <|> enumDecl)
+  -- <*> (typeDecl <|> enumDecl) XXX
+  <*> typeDecl
+  <*> option Nothing (Just <$ skipSpaces <*> constraint)
 
 optional'
-  =   Optional
+    = Optional
   <$  char '?'
   <*  skipSpaces
-  <*> var
+  <*> identifier
   <*  skipSpaces
-  <*> (typeDecl <|> enumDecl)
-  <*  skipSpaces
-  <*> option Nothing (Just <$> defaultDecl)
+  -- <*> (typeDecl <|> enumDecl) -- XXX
+  <*> typeDecl
+  <*> option Nothing (Just <$ skipSpaces <*> defaultDecl)
+  <*> option Nothing (Just <$ skipSpaces <*> constraint)
 
 defaultDecl
-  =   id
-  <$  string "~>"
+    = id
+  <$  spaces
+  <*  string "~>"
   <*  skipSpaces
   <*> val
 
 -- names
 
 isIdChar c = isAlphaNum c || c `elem` ['_', '-']
-var = many1 $ satisfy isIdChar
+identifier = many1 $ satisfy isIdChar
 
 type' = choice [ string "Bool"
                , string "Nat"
@@ -91,7 +109,7 @@ enums'
          )
 
 enumDecl
-  = f
+    = f
   <$  char ':'
   <*  skipSpaces
   <*> enums'
@@ -100,40 +118,118 @@ enumDecl
   f vs v = EnumType $ vs ++ [v]
 
 typeDecl
-  =   f
+    = f
   <$  char ':'
   <*  skipSpaces
   <*> type'
   where
-  f "Bool"   = BoolType
-  f "Nat"    = NatType
-  f "Int"    = IntType
-  f "String" = StrType
+    f "Bool"   = BoolType
+    f "Nat"    = NatType
+    f "Int"    = IntType
+    f "String" = StrType
 
 -- values
 
 boolVal = f <$> (string "true" <|> string "false")
   where
-  f "true"  = BoolVal True
-  f "false" = BoolVal False
+    f "true"  = BoolVal True
+    f "false" = BoolVal False
 
 natVal
-  = NatVal . read
+    = NatVal . read
   <$> many1 (satisfy isDigit)
 
 intVal
-  = f
+    = f
   <$> option Nothing (Just <$> char '-')
   <*> natVal
   where
-  f Nothing    (NatVal n) = IntVal n
-  f (Just '-') (NatVal n) = IntVal (-n)
+    f Nothing    (NatVal n) = IntVal n
+    f (Just '-') (NatVal n) = IntVal (-n)
 
 strVal
-  =   StrVal
+    = StrVal
   <$> between (char '"') (char '"') (many $ satisfy any')
 
 isEnumChar = isIdChar
 enumVal = EnumVal <$> (many1 $ satisfy isEnumChar)
 
-val = choice [boolVal, natVal, intVal, strVal, enumVal]
+val = choice [ boolVal
+             , natVal
+             , intVal
+             , strVal
+             -- , enumVal XXX
+             ]
+
+-- predicates
+
+constraint
+    = id
+  <$  skipSpaces
+  <*  string "with"
+  <*  skipSpaces
+  <*> expr
+
+expr = choice [ nullaryPredExpr
+              , unaryPredExpr
+              , boolExpr
+              ]
+
+nullaryPredExpr
+   = NullaryPredExpr
+ <$> identifier
+
+unaryPredExpr
+   = UnaryPredExpr
+ <$> identifier
+ <*  spaces
+ <*> val
+
+ordExpr
+    = OrdExpr
+  <$> ordering
+  <*  skipSpaces
+  <*> val
+
+boolExpr = choice [ andExpr
+                  , orExpr
+                  , notExpr
+                  ]
+
+binExpr' op
+    = (,)
+  <$> expr
+  <*  spaces
+  <*  string (f op)
+  <*  spaces
+  <*> expr
+  where f And = "&&"
+        f Or  = "||"
+
+binExpr op =
+      BoolExpr op
+  <$> parens (f <$> binExpr' op)
+  where f (x, y) = [x, y]
+
+andExpr = binExpr And
+orExpr  = binExpr Or
+notExpr
+    = BoolExpr Not
+  <$> (pure <$> (   id
+                <$  string "!"
+                <*  spaces
+                <*> expr
+                ))
+
+ordering = f <$> choice [ string "<"
+                        , string "<="
+                        , string "=="
+                        , string ">"
+                        , string ">="
+                        ]
+  where
+    f "<"  = LT
+    f "<=" = LTE
+    f "==" = EQ
+    f ">"  = GT
+    f ">=" = GTE

@@ -9,19 +9,20 @@ import Data.Monoid
 import Text.Casing
 import Text.ParserCombinators.ReadP
 
-import Parser
+import Parser hiding (Pass, pass0, pass1)
 import Syntax
 
 --------------------------------------------------------------------------------
 
 type Pass a = (Env, a) -> Either String (Env, a)
 
-compile :: (TypeCheck a, Adherence a, Normalize a) => Pass a
+compile :: (TypeCheck a, Adherence a, Normalize a, Sat a) => Pass a
 compile x
     = return x
   >>= pass0
   >>= pass1
-  >>= pass2
+  -- >>= pass2
+  >>= pass3
 
 pass0 :: TypeCheck a => Pass a
 pass0 = typeChecks
@@ -31,6 +32,9 @@ pass1 = Right . normalize
 
 pass2 :: Adherence a => Pass a
 pass2 = adheres
+
+pass3 :: Sat a => Pass a
+pass3 = satisfies
 
 --------------------------------------------------------------------------------
 
@@ -62,9 +66,9 @@ instance TypeCheck (Value, Type) where
     Left $ "expected: " ++ show t ++ ", but got value: " ++ show v
 
 instance TypeCheck Stmt where
-  typeChecks x@(Expect _ _)            = Right x
-  typeChecks x@(Optional _ t Nothing)  = Right x
-  typeChecks x@(Optional _ t (Just v)) = typeChecks (v, t) >>= const (Right x)
+  typeChecks x@(Expect _ _ _)            = Right x -- XXX
+  typeChecks x@(Optional _ t Nothing _)  = Right x -- XXX
+  typeChecks x@(Optional _ t (Just v) _) = typeChecks (v, t) >>= const (Right x) -- XXX
 
 instance TypeCheck Umwelt where
   typeChecks u@(Umwelt stmts) = case [e | Left e <- map typeChecks stmts] of
@@ -83,8 +87,8 @@ instance Normalize String where
   normalize = screamingSnake
 
 instance Normalize Stmt where
-  normalize (Expect   n t)   = Expect   (normalize n) t
-  normalize (Optional n t d) = Optional (normalize n) t d
+  normalize (Expect   n t c)   = Expect   (normalize n) t c -- XXX
+  normalize (Optional n t d c) = Optional (normalize n) t d c -- XXX
 
 instance Normalize Umwelt where
   normalize (Umwelt stmts) = Umwelt $ map normalize stmts
@@ -98,17 +102,32 @@ class Adherence a where
   adheres :: (Env, a) -> Either String (Env, a)
 
 instance Adherence Stmt where
-  adheres ([], Expect n _) = Left $ "expected env var " ++ show n
-  adheres (((n, v):env'), s@(Expect n' t))
+  adheres ([], Expect n _ _) = Left $ "expected environment variable " ++ show n -- XXX
+  adheres ((n, v):env', s@(Expect n' t _)) -- XXX
     | n == n'   = typeChecks (v, t) >> Right ([(n, v)], s)
     | otherwise = adheres (env', s)
-  adheres ([], s@(Optional _ _ Nothing))  = Right ([], s)
-  adheres ([], s@(Optional n _ (Just d))) = Right ([(n, show d)], s)
-  adheres (((n, v):env'), o@(Optional n' t md))
+  adheres ([], s@(Optional _ _ Nothing _))  = Right ([], s) -- XXX
+  adheres ([], s@(Optional n _ (Just d) _)) = Right ([(n, show d)], s) -- XXX
+  adheres ((n, v):env', o@(Optional n' t md _)) -- XXX
     | n == n'   = typeChecks (v, t) >> Right ([(n, v)], o)
     | otherwise = adheres (env', o)
 
 instance Adherence Umwelt where
   adheres (env, u@(Umwelt stmts)) = do
+    envs <- fmap (map fst) $ sequence $ map adheres (zip (repeat env) stmts)
+    Right (mconcat envs, u)
+
+--------------------------------------------------------------------------------
+
+class Sat a where
+  satisfies :: (Env, a) -> Either String (Env, a)
+
+instance Sat Stmt where
+  satisfies ((n, v):env', s@(Expect n' _ c))
+    | n == n'   = satisfies (env', s)
+    | otherwise = satisfies (env', s)
+
+instance Sat Umwelt where
+  satisfies (env, u@(Umwelt stmts)) = do
     envs <- fmap (map fst) $ sequence $ map adheres (zip (repeat env) stmts)
     Right (mconcat envs, u)
