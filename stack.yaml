@@ -3,5 +3,6 @@ packages:
 - '.'
 extra-deps:
   - casing-0.1.2.1
+  - plugins-1.5.6.0
 flags: {}
 extra-package-dbs: []

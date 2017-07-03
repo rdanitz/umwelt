@@ -1,0 +1,12 @@
+# this is a simple environment spec;
+# it should demonstrate the minimal positive coverage
+
+# some pets
+! cat : String
+? dog : Bool
+? cow : Bool ~> true
+
+# some wild animals
+! lispy-lizard : Nat
+? slithery_snake : Int ~> -42
+? CautiousCamel : String ~> "is cautious" # duh!

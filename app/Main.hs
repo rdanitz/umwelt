@@ -14,7 +14,7 @@ p sy st = fst . head . (filter (null . snd)) $ readP_to_S sy st
 proc' = proc "env" []
 
 parsed = do
-  input <- readFile "examples/predicates.env"
+  input <- readFile "examples/predicates.umwelt"
   return $ parse input
 
 main :: IO ()
@@ -31,10 +31,10 @@ dev :: IO ()
 dev = do
   env <- getEnvironment
   u <- parsed
-  print u
+  --print u
   case compile (env, u) of
     Left err        -> putStrLn err
     Right (env', u') -> do
-      print u'
-      --createProcess $ proc' { env = Just env' }
+      --print u'
+      createProcess $ proc' { env = Just env' }
       return ()

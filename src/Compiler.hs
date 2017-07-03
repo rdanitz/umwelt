@@ -4,6 +4,7 @@ module Compiler where
 
 import Data.Char
 import Data.Foldable
+import qualified Data.Map as M
 import Data.Maybe
 import Data.Monoid
 import Text.Casing
@@ -21,7 +22,7 @@ compile x
     = return x
   >>= pass0
   >>= pass1
-  -- >>= pass2
+  >>= pass2
   >>= pass3
 
 pass0 :: TypeCheck a => Pass a
@@ -49,7 +50,7 @@ instance TypeCheck (String, Type) where
   typeChecks x@(s, t) =
     let p = parserFor t
     in  fmap (const x) $ maybe (Left $ "expected: " ++ show t ++ ", but got value: " ++ s)
-                               Right $ listToMaybe $ readP_to_S p s
+                                Right $ listToMaybe $ readP_to_S p s
 
 instance TypeCheck (Value, Type) where
   typeChecks x@(BoolVal _, BoolType) = Right x
@@ -122,12 +123,15 @@ instance Adherence Umwelt where
 class Sat a where
   satisfies :: (Env, a) -> Either String (Env, a)
 
-instance Sat Stmt where
-  satisfies ((n, v):env', s@(Expect n' _ c))
-    | n == n'   = satisfies (env', s)
-    | otherwise = satisfies (env', s)
+instance Sat (Value, Expr) where
+  satisfies (env, x@(BoolVal True,  NullaryPredExpr "isTrue"))  = Right (env, x)
+  satisfies (env, x@(BoolVal False, NullaryPredExpr "isFalse")) = Right (env, x)
+  satisfies (env, x@(StrVal s, NullaryPredExpr s'))             = Left $
+    "expected "
+
+instance Sat (Value, Stmt) where
+  satisfies (env, vs@(v, Expect n _ c)) = satisfies (env, vs)
+    where Just v' = M.lookup n $ M.fromList env
 
 instance Sat Umwelt where
-  satisfies (env, u@(Umwelt stmts)) = do
-    envs <- fmap (map fst) $ sequence $ map adheres (zip (repeat env) stmts)
-    Right (mconcat envs, u)
+  satisfies (env, u@(Umwelt stmts)) = Right (env, u)

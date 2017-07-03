@@ -133,7 +133,11 @@ typeDecl
 boolVal = f <$> (string "true" <|> string "false")
   where
     f "true"  = BoolVal True
+    f "True"  = BoolVal True
+    f "1"     = BoolVal True
     f "false" = BoolVal False
+    f "False" = BoolVal False
+    f "0"     = BoolVal False
 
 natVal
     = NatVal . read
@@ -172,6 +176,7 @@ constraint
 
 expr = choice [ nullaryPredExpr
               , unaryPredExpr
+              , ordExpr
               , boolExpr
               ]
 
