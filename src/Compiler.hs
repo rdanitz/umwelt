@@ -1,7 +1,11 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts  #-}
 
 module Compiler where
 
+import Control.Monad.IO.Class
+import Control.Monad.Identity
+import Control.Monad.Catch
 import Data.Char
 import Data.Foldable
 import qualified Data.Map as M
@@ -9,6 +13,8 @@ import Data.Maybe
 import Data.Monoid
 import Text.Casing
 import Text.ParserCombinators.ReadP
+import Language.Haskell.Interpreter hiding (typeChecks)
+import Language.Haskell.Interpreter.Unsafe
 
 import Parser hiding (Pass, pass0, pass1)
 import Syntax
@@ -17,13 +23,16 @@ import Syntax
 
 type Pass a = (Env, a) -> Either String (Env, a)
 
-compile :: (TypeCheck a, Adherence a, Normalize a, Sat a) => Pass a
-compile x
-    = return x
-  >>= pass0
-  >>= pass1
-  >>= pass2
-  >>= pass3
+compile :: (TypeCheck a, Adherence a, Normalize a, Sat (Env, a)) => (Env, a) -> IO (Env, a)
+compile x = do
+  (case a of
+    Right y  -> return y
+    Left err -> error err)
+    >>= pass3
+  where a   = return x
+          >>= pass0
+          >>= pass1
+          >>= pass2
 
 pass0 :: TypeCheck a => Pass a
 pass0 = typeChecks
@@ -34,7 +43,7 @@ pass1 = Right . normalize
 pass2 :: Adherence a => Pass a
 pass2 = adheres
 
-pass3 :: Sat a => Pass a
+pass3 :: Sat (Env, a) => (Env, a) -> IO (Env, a)
 pass3 = satisfies
 
 --------------------------------------------------------------------------------
@@ -68,6 +77,7 @@ instance TypeCheck (Value, Type) where
 
 instance TypeCheck Stmt where
   typeChecks x@(Expect _ _ _)            = Right x -- XXX
+
   typeChecks x@(Optional _ t Nothing _)  = Right x -- XXX
   typeChecks x@(Optional _ t (Just v) _) = typeChecks (v, t) >>= const (Right x) -- XXX
 
@@ -107,6 +117,7 @@ instance Adherence Stmt where
   adheres ((n, v):env', s@(Expect n' t _)) -- XXX
     | n == n'   = typeChecks (v, t) >> Right ([(n, v)], s)
     | otherwise = adheres (env', s)
+    
   adheres ([], s@(Optional _ _ Nothing _))  = Right ([], s) -- XXX
   adheres ([], s@(Optional n _ (Just d) _)) = Right ([(n, show d)], s) -- XXX
   adheres ((n, v):env', o@(Optional n' t md _)) -- XXX
@@ -120,18 +131,53 @@ instance Adherence Umwelt where
 
 --------------------------------------------------------------------------------
 
+eval' :: (Control.Monad.Catch.MonadMask m, MonadIO m) => Value -> Pred -> m ()
+eval' v p = do
+  r <- runInterpreter $ do
+    loadModules modules
+    setImportsQ imports
+    eval expr
+  case r of
+    Right "True"  -> return ()
+    Right "False" -> error $ "\npredicate not satisfied: " ++ show p ++
+                             "\nvalue: " ++ show v
+    Right x       -> error $ "unexpected predicate evaluation: " ++ show x
+    Left (WontCompile errs) -> error $ "won't compile:\n" ++ concatMap errMsg errs
+    Left err -> error $ show err
+  where modules = [ "src/Predicates.hs" ]
+        imports = [ ("Prelude", Just "P")
+                  , ("Predicates", Nothing)
+                  ]
+        expr = v' ++ " & " ++ show p
+        v' = case v of
+          StrVal s -> show s
+          _        -> show v
+
+
 class Sat a where
-  satisfies :: (Env, a) -> Either String (Env, a)
+  satisfies :: (MonadMask m, MonadIO m) => a -> m a
 
-instance Sat (Value, Expr) where
-  satisfies (env, x@(BoolVal True,  NullaryPredExpr "isTrue"))  = Right (env, x)
-  satisfies (env, x@(BoolVal False, NullaryPredExpr "isFalse")) = Right (env, x)
-  satisfies (env, x@(StrVal s, NullaryPredExpr s'))             = Left $
-    "expected "
+instance Sat (Value, Pred) where
+  satisfies (v, p) = eval' v p >> return (v, p)
 
-instance Sat (Value, Stmt) where
-  satisfies (env, vs@(v, Expect n _ c)) = satisfies (env, vs)
-    where Just v' = M.lookup n $ M.fromList env
+instance Sat (Env, Stmt) where
+  satisfies (env, s@(Expect _ _ Nothing)) = return (env, s)
+  satisfies ((n, s):env', stmt@(Expect n' t (Just p)))
+    | n == n'   = satisfies (v, p) >> return ([], stmt)
+    | otherwise = satisfies (env', stmt)
+    where p' = parserFor t
+          Just (v, _) = listToMaybe $ filter (null . snd) $ readP_to_S p' s
+               
+  satisfies (env, s@(Optional _ _ _ Nothing)) = return ([], s)
+  satisfies ((n, s):env', stmt@(Optional n' t _ (Just p)))
+    | n == n'   = satisfies (v, p) >> return ([], stmt)
+    | otherwise = satisfies (env', stmt)
+    where p' = parserFor t
+          Just (v, _) = listToMaybe $ filter (null . snd) $ readP_to_S p' s
 
-instance Sat Umwelt where
-  satisfies (env, u@(Umwelt stmts)) = Right (env, u)
+  satisfies x@([], _) = return x
+
+instance Sat (Env, Umwelt) where
+  satisfies (env, u@(Umwelt stmts)) = do
+    mapM_ satisfies (zip (repeat env) stmts)
+    return (env, u)

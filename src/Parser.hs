@@ -1,6 +1,6 @@
 module Parser where
 
-import Prelude hiding (LT, EQ, GT, Ordering)
+import Prelude hiding (pred)
 import Data.Char
 import Control.Applicative ((<|>))
 import Data.Maybe
@@ -172,69 +172,6 @@ constraint
   <$  skipSpaces
   <*  string "with"
   <*  skipSpaces
-  <*> expr
+  <*> pred
 
-expr = choice [ nullaryPredExpr
-              , unaryPredExpr
-              , ordExpr
-              , boolExpr
-              ]
-
-nullaryPredExpr
-   = NullaryPredExpr
- <$> identifier
-
-unaryPredExpr
-   = UnaryPredExpr
- <$> identifier
- <*  spaces
- <*> val
-
-ordExpr
-    = OrdExpr
-  <$> ordering
-  <*  skipSpaces
-  <*> val
-
-boolExpr = choice [ andExpr
-                  , orExpr
-                  , notExpr
-                  ]
-
-binExpr' op
-    = (,)
-  <$> expr
-  <*  spaces
-  <*  string (f op)
-  <*  spaces
-  <*> expr
-  where f And = "&&"
-        f Or  = "||"
-
-binExpr op =
-      BoolExpr op
-  <$> parens (f <$> binExpr' op)
-  where f (x, y) = [x, y]
-
-andExpr = binExpr And
-orExpr  = binExpr Or
-notExpr
-    = BoolExpr Not
-  <$> (pure <$> (   id
-                <$  string "!"
-                <*  spaces
-                <*> expr
-                ))
-
-ordering = f <$> choice [ string "<"
-                        , string "<="
-                        , string "=="
-                        , string ">"
-                        , string ">="
-                        ]
-  where
-    f "<"  = LT
-    f "<=" = LTE
-    f "==" = EQ
-    f ">"  = GT
-    f ">=" = GTE
+pred = Pred <$> (many $ satisfy (/= '\n'))

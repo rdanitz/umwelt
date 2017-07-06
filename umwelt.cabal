@@ -21,8 +21,9 @@ library
   build-depends:       base >= 4.7 && < 5
                      , casing
                      , containers
-                     , plugins
+                     , exceptions
                      , hint
+                     , mtl
   default-language:    Haskell2010
 
 executable umwelt-exe
@@ -32,7 +33,6 @@ executable umwelt-exe
   build-depends:       base
                      , process
                      , umwelt
-                     , plugins
   default-language:    Haskell2010
 
 test-suite umwelt-test

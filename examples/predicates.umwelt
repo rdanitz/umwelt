@@ -1,10 +1,10 @@
 # this spec demonstrates predicates
 
-! zen      : Bool with (isEmpty &&& isFull)
-? insanity : Bool with (isTrue && !isTrue)
+! zen      : Bool   with (== True) || (/= True)
+? insanity : Bool   with true && false
 
-! question : String with !isEmpty
-? answer   : Nat    with ((>40 && <=42) || ==23)
+?question : String with not isEmpty
+!answer   : Nat    with (>= 23) && even
 
-? city     : String with startsWith "Be"
-! country  : String ~> "Germany" with endsWith "many"
+! city     : String with startsWith "Be"
+? country  : String ~> "Germany" with endsWith "many"

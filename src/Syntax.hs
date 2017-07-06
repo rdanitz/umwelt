@@ -12,8 +12,8 @@ newtype Umwelt
   deriving Show
 
 data Stmt
-  = Expect String Type (Maybe Expr)
-  | Optional String Type (Maybe Value) (Maybe Expr)
+  = Expect String Type (Maybe Pred)
+  | Optional String Type (Maybe Value) (Maybe Pred)
   deriving Show
 
 data Type
@@ -30,22 +30,16 @@ data Value
   | IntVal  Integer
   | StrVal  String
   | EnumVal String
-  deriving (Eq, Show)
+  deriving Eq
 
-data Expr
-  = NullaryPredExpr String
-  | UnaryPredExpr String Value
-  | OrdExpr  Ordering Value
-  | BoolExpr BoolOp [Expr]
-  deriving Show
+instance Show Value where
+  show (BoolVal b) = show b
+  show (NatVal  n) = show n
+  show (IntVal  i) = show i
+  show (StrVal  s) = s
+  show (EnumVal e) = show e
 
-data BoolOp = And | Or | Not
-  deriving Show
+newtype Pred = Pred String
 
-data Ordering
-  = LT
-  | LTE
-  | GT
-  | GTE
-  | EQ
-  deriving Show
+instance Show Pred where
+  show (Pred p) = p
