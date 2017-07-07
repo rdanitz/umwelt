@@ -14,7 +14,7 @@ p sy st = fst . head . (filter (null . snd)) $ readP_to_S sy st
 proc' = proc "env" []
 
 parsed = do
-  input <- readFile "examples/predicates.umwelt"
+  input <- readFile "examples/real_world.umwelt"
   return $ parse input
 
 main :: IO ()

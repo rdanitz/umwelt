@@ -71,7 +71,7 @@ instance TypeCheck (Value, Type) where
   typeChecks x@(e@(EnumVal v), t@(EnumType vs)) =
     if e `elem` vs
     then Right x
-    else Left $ "expected: " ++ show t ++ ", but got value: " ++ show e
+    else Left $ "expected one of: " ++ show t ++ ", but got value: " ++ show e
   typeChecks (v, t) =
     Left $ "expected: " ++ show t ++ ", but got value: " ++ show v
 

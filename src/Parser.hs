@@ -66,8 +66,7 @@ expect
   <*  skipSpaces
   <*> identifier
   <*  skipSpaces
-  -- <*> (typeDecl <|> enumDecl) XXX
-  <*> typeDecl
+  <*> (typeDecl <|> enumDecl)
   <*> option Nothing (Just <$ skipSpaces <*> constraint)
 
 optional'
@@ -76,8 +75,7 @@ optional'
   <*  skipSpaces
   <*> identifier
   <*  skipSpaces
-  -- <*> (typeDecl <|> enumDecl) -- XXX
-  <*> typeDecl
+  <*> (typeDecl <|> enumDecl)
   <*> option Nothing (Just <$ skipSpaces <*> defaultDecl)
   <*> option Nothing (Just <$ skipSpaces <*> constraint)
 
@@ -102,20 +100,23 @@ type' = choice [ string "Bool"
 -- types
 
 enums'
-  = many (  enumVal
-         <* skipSpaces
-         <* char '|'
-         <* skipSpaces
+  = many (   id
+         <$  skipSpaces
+         <*  char '|'
+         <*  skipSpaces
+         <*> enumVal
          )
 
 enumDecl
     = f
   <$  char ':'
   <*  skipSpaces
-  <*> enums'
   <*> enumVal
+  <*> enums'
   where
-  f vs v = EnumType $ vs ++ [v]
+  f v = EnumType . (v:)
+
+enumVal = EnumVal <$> identifier
 
 typeDecl
     = f
@@ -155,14 +156,11 @@ strVal
     = StrVal
   <$> between (char '"') (char '"') (many $ satisfy any')
 
-isEnumChar = isIdChar
-enumVal = EnumVal <$> (many1 $ satisfy isEnumChar)
-
 val = choice [ boolVal
              , natVal
              , intVal
              , strVal
-             -- , enumVal XXX
+             , enumVal
              ]
 
 -- predicates

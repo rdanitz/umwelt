@@ -2,6 +2,7 @@ module Syntax where
 
 import Prelude hiding (LT, EQ, GT, Ordering)
 import Data.Maybe
+import Data.List
 
 --------------------------------------------------------------------------------
 
@@ -22,8 +23,15 @@ data Type
   | IntType
   | StrType
   | EnumType [Value]
-  deriving (Eq, Show)
+  deriving Eq
 
+instance Show Type where
+  show BoolType = "Bool"
+  show NatType  = "Nat"
+  show IntType  = "Int"
+  show StrType  = "String"
+  show (EnumType vals) = intercalate ", " [show v | EnumVal v <- vals]
+  
 data Value
   = BoolVal Bool
   | NatVal  Integer

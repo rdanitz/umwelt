@@ -3,8 +3,8 @@
 
 ! home : String
 ! path : String # this should be array maybe?
-! pwd : String # this should be 'Path' maybe?
+! pwd  : String # this should be 'Path' maybe?
 
-? xdg-config-home # Path?
+? xdg-config-home : String # Path?
 ? term : screen | xterm | st-256color ~> st-256color
 ? histsize : Nat ~> 1000
