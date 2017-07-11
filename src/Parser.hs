@@ -28,7 +28,7 @@ pass1 = filter (not . all isSpace)
 -- utility
 
 any'   = const True
-spaces = skipMany $ satisfy isSpace
+spaces = skipMany1 $ satisfy isSpace
 eol    = const () <$> char '\n'
 parens  = between (char '(') (char ')')
 
@@ -37,20 +37,26 @@ parserFor BoolType      = boolVal
 parserFor NatType       = natVal
 parserFor IntType       = intVal
 parserFor StrType       = StrVal <$> (many $ satisfy any') -- XXX have to think about it a bit more
-parserFor (EnumType vs) = enumVal
+-- parserFor (EnumType vs) = enumVal
 
 -- top level
 
+umwelt :: ReadP Umwelt
 umwelt
-    = Umwelt . fromJust . sequence . filter isJust
+    = (Umwelt []) . fromJust . sequence . filter isJust -- XXX
   <$> many (choice [stmt, comment'])
 
+stmt :: ReadP (Maybe Stmt)
 stmt
     = Just
-  <$> choice [expect, optional']
-  <*  spaces
+  <$> choice [ expect
+             , optional'
+             , alias
+             ]
+  <*  many (satisfy isSpace)
   <*  choice [eol, eof]
 
+comment :: ReadP (Maybe Stmt)
 comment
    = Nothing
   <$ char '#'
@@ -66,7 +72,8 @@ expect
   <*  skipSpaces
   <*> identifier
   <*  skipSpaces
-  <*> (typeDecl <|> enumDecl)
+--   <*> (typeDecl <|> enumDecl)
+  <*> typeDecl
   <*> option Nothing (Just <$ skipSpaces <*> constraint)
 
 optional'
@@ -75,59 +82,94 @@ optional'
   <*  skipSpaces
   <*> identifier
   <*  skipSpaces
-  <*> (typeDecl <|> enumDecl)
+--  <*> (typeDecl <|> enumDecl)
+  <*> typeDecl
   <*> option Nothing (Just <$ skipSpaces <*> defaultDecl)
   <*> option Nothing (Just <$ skipSpaces <*> constraint)
 
 defaultDecl
     = id
-  <$  spaces
+  <$  skipSpaces
   <*  string "~>"
   <*  skipSpaces
   <*> val
 
+alias
+    = Alias
+  <$> identifier
+  <*  skipSpaces
+  <*  string ":="
+  <*  skipSpaces
+--  <*> (typeDecl <|> enumDecl)
+  <*> type'
+  <*> option Nothing (Just <$ skipSpaces <*> defaultDecl)
+  <*> option Nothing (Just <$ skipSpaces <*> constraint)
+
 -- names
 
-isIdChar c = isAlphaNum c || c `elem` ['_', '-']
-identifier = many1 $ satisfy isIdChar
-
-type' = choice [ string "Bool"
-               , string "Nat"
-               , string "Int"
-               , string "String"
-               ]
+identifier = (:) <$> satisfy begin <*> (many $ satisfy rest)
+  where
+    begin = (`elem` ['_', '-'] ++ ['a'..'z'])
+    rest  = (`elem` ['_', '-'] ++ ['a'..'z'] ++ ['A'..'Z'])
 
 -- types
 
-enums'
-  = many (   id
-         <$  skipSpaces
-         <*  char '|'
-         <*  skipSpaces
-         <*> enumVal
-         )
+type' = choice [type'', Compound <$> typeExpr]
 
-enumDecl
-    = f
-  <$  char ':'
-  <*  skipSpaces
-  <*> enumVal
-  <*> enums'
-  where
-  f v = EnumType . (v:)
-
-enumVal = EnumVal <$> identifier
-
-typeDecl
-    = f
-  <$  char ':'
-  <*  skipSpaces
-  <*> type'
+type'' = f <$> choice [ identifier
+                     , string "Bool"
+                     , string "Nat"
+                     , string "Int"
+                     , string "String"
+                     ]
   where
     f "Bool"   = BoolType
     f "Nat"    = NatType
     f "Int"    = IntType
     f "String" = StrType
+    f x        = AliasType x
+
+typeExpr
+  = choice [ typeExpr'
+           , TList <$> sepBy1 typeExpr' spaces
+           ]
+
+typeExpr'
+  = choice [ lit
+           , TChoice <$> expr <*  char '?'
+           , TMany   <$> expr <*  char '*'
+           , TMany1  <$> expr <*  char '+'
+           , TVal    <$> val
+           ]
+  where
+    lit  = TLit <$> type''
+    expr = choice [lit, parens typeExpr]
+  
+    
+-- Enums'
+--   = many (   id
+--          <$  skipSpaces
+--          <*  char '|'
+--          <*  skipSpaces
+--          <*> enumVal
+--          )
+--
+-- enumDecl
+--     = f
+--   <$  char ':'
+--   <*  skipSpaces
+--   <*> enumVal
+--   <*> enums'
+--   where
+--   f v = EnumType . (v:)
+
+-- enumVal = EnumVal <$> identifier
+
+typeDecl
+    = id
+  <$  char ':'
+  <*  skipSpaces
+  <*> type'
 
 -- values
 
@@ -154,13 +196,13 @@ intVal
 
 strVal
     = StrVal
-  <$> between (char '"') (char '"') (many $ satisfy any')
+  <$> between (char '"') (char '"') (many $ satisfy (/= '"'))
 
 val = choice [ boolVal
              , natVal
              , intVal
              , strVal
-             , enumVal
+             -- , enumVal
              ]
 
 -- predicates

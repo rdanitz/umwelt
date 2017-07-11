@@ -8,36 +8,53 @@ import Data.List
 
 type Env = [(String, String)]
 
-newtype Umwelt
-  = Umwelt [Stmt]
+data Umwelt
+  = Umwelt { aliases :: [Stmt]
+           , stmts   :: [Stmt]
+           }
   deriving Show
 
 data Stmt
   = Expect String Type (Maybe Pred)
   | Optional String Type (Maybe Value) (Maybe Pred)
+  | Alias String Type (Maybe Value) (Maybe Pred)
   deriving Show
 
 data Type
-  = BoolType
+  = AliasType String
+  | BoolType
   | NatType
   | IntType
   | StrType
-  | EnumType [Value]
-  deriving Eq
+  -- | EnumType [Value]
+  | Compound TypeExpr
+  deriving (Eq, Show)
 
-instance Show Type where
-  show BoolType = "Bool"
-  show NatType  = "Nat"
-  show IntType  = "Int"
-  show StrType  = "String"
-  show (EnumType vals) = intercalate ", " [show v | EnumVal v <- vals]
-  
+-- instance Show Type where
+--   show (AliasType x) = x
+--   show BoolType = "Bool"
+--   show NatType  = "Nat"
+--   show IntType  = "Int"
+--   show StrType  = "String"
+--   -- show (EnumType vals) = intercalate ", " [show v | EnumVal v <- vals]
+--   show (Compound expr) = show expr
+--   --  = intercalate ", " $ map show exprs
+
+data TypeExpr
+  = TLit    Type
+  | TChoice TypeExpr
+  | TMany   TypeExpr
+  | TMany1  TypeExpr
+  | TVal    Value
+  | TList   [TypeExpr]
+  deriving (Eq, Show)
+
 data Value
   = BoolVal Bool
   | NatVal  Integer
   | IntVal  Integer
   | StrVal  String
-  | EnumVal String
+  -- | EnumVal String
   deriving Eq
 
 instance Show Value where
@@ -45,7 +62,7 @@ instance Show Value where
   show (NatVal  n) = show n
   show (IntVal  i) = show i
   show (StrVal  s) = s
-  show (EnumVal e) = show e
+  -- show (EnumVal e) = show e
 
 newtype Pred = Pred String
 
