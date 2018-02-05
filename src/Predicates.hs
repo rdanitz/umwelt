@@ -3,6 +3,7 @@ module Predicates
   , module Data.Function
   , (&&)
   , (||)
+  , (.|)
   , not
   , isEmpty
   , true
@@ -22,6 +23,9 @@ import Data.List
 (***) h f g x = f x `h` g x
 (&&) = (***) (P.&&)
 (||) = (***) (P.||)
+
+(.|) :: Eq a => a -> a -> (a -> Bool)
+x .| y = (== x) || (== y)
 
 not f = P.not . f
 

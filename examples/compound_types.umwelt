@@ -1,10 +1,10 @@
 # this spec demonstrates how to use composed types to specify URIs
 
 scheme := String ~> "https" with "ssh" | "https"
-auth   := String    	    with contains ":"
+auth   := String            with contains ":"
 domain := String            with endsWith "github.com"
 port   := Nat ~> 80         with (> 0) && (<= 65535)
 path   := String            with startsWith "advancedtelematic/umwelt"
 
 git-url := scheme "://" (auth "@")? domain (":" port)? "/" path
-?url : git-url ~> "git@github.com/advancedtelematic/umwelt.git"
+?url: git-url ~> "git@github.com/advancedtelematic/umwelt.git"

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE TupleSections     #-}
 
 module Compiler where
 
@@ -52,40 +53,57 @@ class TypeCheck a where
   typeChecks :: a -> Either String a
 
 instance TypeCheck (String, Type) where
-  -- typeChecks x@(s, t@(EnumType vs)) =
-  --   if s `elem` [s | EnumVal s <- vs]
-  --   then Right x
-  --   else Left $ "expected: " ++ show t ++ ", but got value: " ++ s
   typeChecks x@(s, t) =
     let p = parserFor t
-    in  fmap (const x) $ maybe (Left $ "expected: " ++ show t ++ ", but got value: " ++ s)
+    in  fmap (const x) $ maybe (Left $ "expected: " ++ show t ++ ",\n but got value: " ++ s)
                                 Right $ listToMaybe $ readP_to_S p s
 
-instance TypeCheck (Value, Type) where
-  typeChecks x@(BoolVal _, BoolType) = Right x
-  typeChecks x@(NatVal n,  NatType)
+instance TypeCheck (Umwelt, Value, Type) where
+  typeChecks x@(u, BoolVal _, BoolType) = Right x
+  typeChecks x@(u, NatVal n,  NatType)
     | n >= 0    = Right x
     | otherwise = Left $ "not a natural number: " ++ show n
-  typeChecks x@(IntVal _,  IntType)     = Right x
-  typeChecks x@(StrVal _,  StrType)     = Right x
-  -- typeChecks x@(e@(EnumVal v), t@(EnumType vs)) =
-  --   if e `elem` vs
-  --   then Right x
-  --   else Left $ "expected one of: " ++ show t ++ ", but got value: " ++ show e
-  typeChecks x@(v, AliasType _) = Right x -- XXX
-  typeChecks (v, t) =
-    Left $ "expected: " ++ show t ++ ", but got value: " ++ show v
+  typeChecks x@(u, IntVal _,  IntType)  = Right x
+  typeChecks x@(u, StrVal _,  StrType)  = Right x
 
-instance TypeCheck Stmt where
-  typeChecks x@(Expect _ _ _) = Right x -- XXX
+  typeChecks x@(u, v, AliasType n) = case [t | Alias n t _ _ <- aliases u] of
+    t:_ -> typeChecks (u, v, t) >> Right x -- XXX
+    []   -> Left $ "type alias not defined: " ++ show n
+  typeChecks x@(u, v, Compound expr) = typeChecks (u, v, expr) >> Right x
 
-  typeChecks x@(Optional _ t Nothing _)  = Right x -- XXX
-  typeChecks x@(Optional _ t (Just v) _) = typeChecks (v, t) >>= const (Right x) -- XXX
+  typeChecks (u, v, t) =
+    Left $ "expected: " ++ show t ++ ",\n but got value: " ++ show v
 
-  typeChecks x@(Alias _ _ _ _) = Right x -- XXX
+instance TypeCheck (Umwelt, Value, TypeExpr) where
+  typeChecks x@(u, v, TLit    t)    = typeChecks (u, v, t)    >> Right x
+  typeChecks x@(u, v, TChoice expr) = typeChecks (u, v, expr) >> Right x -- XXX
+  typeChecks x@(u, v, TMany   expr) = typeChecks (u, v, expr) >> Right x -- XXX
+  typeChecks x@(u, v, TMany1  expr) = typeChecks (u, v, expr) >> Right x -- XXX
+  typeChecks x@(u, v, TVal    v')   =
+    if v == v'
+    then Right x
+    else Left $ "expected value: " ++ show v ++ ",\n but got: " ++ show v'
+
+  typeChecks (u, v, TList []) = Left $ "unconsumed value: " ++ show v
+  typeChecks x@(u, v, TList (e:es)) = do
+    typeChecks (u, v, e)
+    typeChecks (u, v, TList es)
+    Right x -- XXX
+  -- typeChecks _ = error "not implemented"
+
+instance TypeCheck (Umwelt, Stmt) where
+  typeChecks x@(u, Expect _ _ _) = Right x -- XXX
+
+  typeChecks x@(u, Optional _ t Nothing  _) = Right x -- XXX
+  typeChecks x@(u, Optional _ t (Just v) _) = typeChecks (u, v, t) >>= const (Right x) -- XXX
+
+  typeChecks x@(u, Alias _ t Nothing  _) = Right x -- XXX
+  typeChecks x@(u, Alias _ t (Just v) _) = typeChecks (u, v, t) >>= const (Right x) -- XXX
 
 instance TypeCheck Umwelt where
-  typeChecks u@(Umwelt aliases stmts) = case [e | Left e <- map typeChecks stmts] of -- XXX
+  typeChecks u@(Umwelt a e o) = case [x | Left x <- map (typeChecks . (u,)) a]
+                                  ++ [x | Left x <- map (typeChecks . (u,)) e]
+                                  ++ [x | Left x <- map (typeChecks . (u,)) o] of
     []    -> Right u
     err:_ -> Left err
 
@@ -106,7 +124,7 @@ instance Normalize Stmt where
   normalize x@(Alias _ _ _ _)  = x
 
 instance Normalize Umwelt where
-  normalize (Umwelt aliases stmts) = Umwelt [] $ map normalize stmts -- XXX
+  normalize (Umwelt a e o) = Umwelt (map normalize a) (map normalize e) (map normalize o)
 
 instance Normalize a => Normalize (Env, a) where
   normalize (env, x) = (env, normalize x)
@@ -131,9 +149,10 @@ instance Adherence Stmt where
   adheres (env, s@(Alias _ _ _ _)) = Right ([], s) -- XXX
 
 instance Adherence Umwelt where
-  adheres (env, u@(Umwelt aliases stmts)) = do -- XXX
-    envs <- fmap (map fst) $ sequence $ map adheres (zip (repeat env) stmts)
+  adheres (env, u@(Umwelt a e o)) = do
+    envs <- f a >> f e >> f o
     Right (mconcat envs, u)
+    where f x = fmap (map fst) $ sequence $ map adheres (zip (repeat env) x)
 
 --------------------------------------------------------------------------------
 
@@ -186,6 +205,6 @@ instance Sat (Env, Stmt) where
   satisfies x@([], _) = return x
 
 instance Sat (Env, Umwelt) where
-  satisfies (env, u@(Umwelt aliases stmts)) = do -- XXX
-    mapM_ satisfies (zip (repeat env) stmts)
+  satisfies (env, u@(Umwelt a e o)) = do
+    mapM_ satisfies (zip (repeat env) (a ++ e ++ o))
     return (env, u)

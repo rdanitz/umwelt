@@ -9,8 +9,9 @@ import Data.List
 type Env = [(String, String)]
 
 data Umwelt
-  = Umwelt { aliases :: [Stmt]
-           , stmts   :: [Stmt]
+  = Umwelt { aliases  :: [Stmt]
+           , expected :: [Stmt]
+           , optional :: [Stmt]
            }
   deriving Show
 
@@ -26,19 +27,16 @@ data Type
   | NatType
   | IntType
   | StrType
-  -- | EnumType [Value]
   | Compound TypeExpr
-  deriving (Eq, Show)
+  deriving Eq
 
--- instance Show Type where
---   show (AliasType x) = x
---   show BoolType = "Bool"
---   show NatType  = "Nat"
---   show IntType  = "Int"
---   show StrType  = "String"
---   -- show (EnumType vals) = intercalate ", " [show v | EnumVal v <- vals]
---   show (Compound expr) = show expr
---   --  = intercalate ", " $ map show exprs
+instance Show Type where
+  show (AliasType x) = x
+  show BoolType = "Bool"
+  show NatType  = "Nat"
+  show IntType  = "Int"
+  show StrType  = "String"
+  show (Compound expr) = show expr
 
 data TypeExpr
   = TLit    Type
@@ -54,7 +52,6 @@ data Value
   | NatVal  Integer
   | IntVal  Integer
   | StrVal  String
-  -- | EnumVal String
   deriving Eq
 
 instance Show Value where
@@ -62,7 +59,6 @@ instance Show Value where
   show (NatVal  n) = show n
   show (IntVal  i) = show i
   show (StrVal  s) = s
-  -- show (EnumVal e) = show e
 
 newtype Pred = Pred String
 

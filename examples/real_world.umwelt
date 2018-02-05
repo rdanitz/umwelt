@@ -6,5 +6,5 @@
 ! pwd  : String # this should be 'Path' maybe?
 
 ? xdg-config-home : String # Path?
-? term : screen | xterm | st-256color ~> st-256color
+? term : String ~> "st-256color" with "xterm" .| "st-256color"
 ? histsize : Nat ~> 1000

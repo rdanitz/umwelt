@@ -33,18 +33,25 @@ eol    = const () <$> char '\n'
 parens  = between (char '(') (char ')')
 
 parserFor :: Type -> ReadP Value
-parserFor BoolType      = boolVal
-parserFor NatType       = natVal
-parserFor IntType       = intVal
-parserFor StrType       = StrVal <$> (many $ satisfy any') -- XXX have to think about it a bit more
--- parserFor (EnumType vs) = enumVal
+parserFor (AliasType _) = error "not implemented"
+parserFor BoolType = boolVal
+parserFor NatType  = natVal
+parserFor IntType  = intVal
+parserFor StrType  = StrVal <$> (many $ satisfy any') -- XXX have to think about it a bit more
+parserFor (Compound _) = error "not implemented"
 
 -- top level
 
 umwelt :: ReadP Umwelt
 umwelt
-    = (Umwelt []) . fromJust . sequence . filter isJust -- XXX
+    =  (\(a, e, o) -> Umwelt a e o) . f [] [] [] . fromJust . sequence . filter isJust -- XXX
   <$> many (choice [stmt, comment'])
+  where
+    f :: [Stmt] -> [Stmt] -> [Stmt] -> [Stmt] -> ([Stmt], [Stmt], [Stmt])
+    f a e o [] = (a, e, o)
+    f a e o (x@(   Alias _ _ _ _):xs) = f (x:a) e o xs
+    f a e o (x@(  Expect   _ _ _):xs) = f a (x:e) o xs
+    f a e o (x@(Optional _ _ _ _):xs) = f a e (x:o) xs
 
 stmt :: ReadP (Maybe Stmt)
 stmt
@@ -72,7 +79,6 @@ expect
   <*  skipSpaces
   <*> identifier
   <*  skipSpaces
---   <*> (typeDecl <|> enumDecl)
   <*> typeDecl
   <*> option Nothing (Just <$ skipSpaces <*> constraint)
 
@@ -82,7 +88,6 @@ optional'
   <*  skipSpaces
   <*> identifier
   <*  skipSpaces
---  <*> (typeDecl <|> enumDecl)
   <*> typeDecl
   <*> option Nothing (Just <$ skipSpaces <*> defaultDecl)
   <*> option Nothing (Just <$ skipSpaces <*> constraint)
@@ -100,7 +105,6 @@ alias
   <*  skipSpaces
   <*  string ":="
   <*  skipSpaces
---  <*> (typeDecl <|> enumDecl)
   <*> type'
   <*> option Nothing (Just <$ skipSpaces <*> defaultDecl)
   <*> option Nothing (Just <$ skipSpaces <*> constraint)
@@ -145,26 +149,6 @@ typeExpr'
     lit  = TLit <$> type''
     expr = choice [lit, parens typeExpr]
   
-    
--- Enums'
---   = many (   id
---          <$  skipSpaces
---          <*  char '|'
---          <*  skipSpaces
---          <*> enumVal
---          )
---
--- enumDecl
---     = f
---   <$  char ':'
---   <*  skipSpaces
---   <*> enumVal
---   <*> enums'
---   where
---   f v = EnumType . (v:)
-
--- enumVal = EnumVal <$> identifier
-
 typeDecl
     = id
   <$  char ':'
@@ -202,7 +186,6 @@ val = choice [ boolVal
              , natVal
              , intVal
              , strVal
-             -- , enumVal
              ]
 
 -- predicates
